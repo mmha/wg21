@@ -1,0 +1,180 @@
+\documentclass[ebook,11pt,article,a4paper]{memoir}
+\usepackage{geometry}
+\usepackage{listings,xcolor,beramono}
+\usepackage{microtype}
+\usepackage[T1]{fontenc}
+\usepackage[pdftex, final]{graphicx}
+\usepackage{tikz}
+
+\makeatletter
+\newenvironment{btHighlight}[1][]
+{\begingroup\tikzset{bt@Highlight@par/.style={#1}}\begin{lrbox}{\@tempboxa}}
+{\end{lrbox}\bt@HL@box[bt@Highlight@par]{\@tempboxa}\endgroup}
+
+\newcommand\btHL[1][]{%
+  \begin{btHighlight}[#1]\bgroup\aftergroup\bt@HL@endenv%
+}
+\def\bt@HL@endenv{%
+  \end{btHighlight}%   
+  \egroup
+}
+\newcommand{\bt@HL@box}[2][]{%
+  \tikz[#1]{%
+    \pgfpathrectangle{\pgfpoint{1pt}{0pt}}{\pgfpoint{\wd #2}{\ht #2}}%
+    \pgfusepath{use as bounding box}%
+    \node[anchor=base west, inner ysep=0pt, minimum height=\ht\strutbox+1pt,#1]{\raisebox{1pt}{\strut}\strut\usebox{#2}};
+  }%
+}
+\makeatother
+
+\lstdefinestyle{cppdiff}{
+    language={C++},
+    basicstyle=\ttfamily\tiny,
+    breaklines=true,
+    moredelim=**[is][{\btHL[fill=green!30]}]{@}{@},
+    moredelim=**[is][{\btHL[fill=red!30]}]{`}{`},
+}
+
+
+\pagestyle{myheadings}
+
+\title{A more constexpr bitset}
+\date{}
+\setsecnumdepth{subsection}
+
+\begin{document}
+\maketitle
+\hfill \begin{tabular}[t]{ll}
+Document Number:& dXXXXr0  \\
+Date:& \today  \\
+Audience: & LEWG\\
+Reply to: & Morris Hafner  \\
+          & hafnermorris@gmail.com  \\
+\end{tabular}
+
+\chapter{Motivation}
+
+As of N4762 only the default constructor, the constructor accepting an \texttt{unsigned long long} and \texttt{operator[]} of \texttt{bitset} are marked as constexpr. With the exception of the functions accepting or returning a \texttt{basic\_string}, there is no reason the rest of the class cannot be made \texttt{constexpr}.
+
+\chapter{Proposed Changes}
+Mark every member function except for the \texttt{basic\_string} constructor and \texttt{to\_string} as \texttt{constexpr}. Make \texttt{bitset::reference} trivially destructible\footnote{In libc++ \texttt{bitset::reference} is trivially destructible already. In libstdc++ it has an empty destructor.} and \texttt{constexpr}.
+
+\chapter{Impact on the Standard}
+This proposal is a pure library addition and does not require new language features.
+
+\chapter{Proposed Wording}
+Change \textit{19.9.1} of N4762 to the following:
+
+\begin{lstlisting}[style=cppdiff]
+#include <string>
+#include <iosfwd>   // for istream (27.7.1), ostream (27.7.2), see 27.3.1
+
+namespace std {
+  template<size_t N> class bitset;
+
+  // 19.9.4, bitset operators
+  template<size_t N>
+    @constexpr@ bitset<N> operator&(const bitset<N>&, const bitset<N>&) noexcept;
+  template<size_t N>
+    @constexpr@ bitset<N> operator|(const bitset<N>&, const bitset<N>&) noexcept;
+  template<size_t N>
+    @constexpr@ bitset<N> operator^(const bitset<N>&, const bitset<N>&) noexcept;
+  template<class charT, class traits, size_t N>
+    basic_istream<charT, traits>&
+      operator>>(basic_istream<charT, traits>& is, bitset<N>& x);
+  template<class charT, class traits, size_t N>
+    basic_ostream<charT, traits>&
+      operator<<(basic_ostream<charT, traits>& os, const bitset<N>& x);
+}
+\end{lstlisting}
+
+Change \textit{19.9.2} of N4762 to the following:
+
+\begin{lstlisting}[style=cppdiff]
+namespace std {
+  template<size_t N> class bitset {
+  public:
+    // bit reference
+    class reference {
+      friend class bitset;
+      @constexpr@ reference() noexcept;
+
+    public:
+      @constexpr@ reference(const reference&) = default;
+      `~reference();`
+      @constexpr@ reference& operator=(bool x) noexcept;            // for b[i] = x;
+      @constexpr@ reference& operator=(const reference&) noexcept;  // for b[i] = b[j];
+      @constexpr@ bool operator~() const noexcept;                  // flips the bit
+      @constexpr@ operator bool() const noexcept;                   // for x = b[i];
+      @constexpr@ reference& flip() noexcept;                       // for b[i].flip();
+    };
+
+    // 19.9.2.1, constructors
+    constexpr bitset() noexcept;
+    constexpr bitset(unsigned long long val) noexcept;
+    template<class charT, class traits, class Allocator>
+      explicit bitset(
+        const basic_string<charT, traits, Allocator>& str,
+        typename basic_string<charT, traits, Allocator>::size_type pos = 0,
+        typename basic_string<charT, traits, Allocator>::size_type n
+          = basic_string<charT, traits, Allocator>::npos,
+        charT zero = charT('0'),
+        charT one = charT('1'));
+    template<class charT>
+      explicit bitset(
+        const charT* str,
+        typename basic_string<charT>::size_type n = basic_string<charT>::npos,
+        charT zero = charT('0'),
+        charT one = charT('1'));
+
+    // 19.9.2.2, bitset operations
+    @constexpr@ bitset<N>& operator&=(const bitset<N>& rhs) noexcept;
+    @constexpr@ bitset<N>& operator|=(const bitset<N>& rhs) noexcept;
+    @constexpr@ bitset<N>& operator^=(const bitset<N>& rhs) noexcept;
+    @constexpr@ bitset<N>& operator<<=(size_t pos) noexcept;
+    @constexpr@ bitset<N>& operator>>=(size_t pos) noexcept;
+    @constexpr@ bitset<N>& set() noexcept;
+    @constexpr@ bitset<N>& set(size_t pos, bool val = true);
+    @constexpr@ bitset<N>& reset() noexcept;
+    @constexpr@ bitset<N>& reset(size_t pos);
+    @constexpr@ bitset<N>  operator~() const noexcept;
+    @constexpr@ bitset<N>& flip() noexcept;
+    @constexpr@ bitset<N>& flip(size_t pos);
+
+    // element access
+    constexpr bool operator[](size_t pos) const;        // for b[i];
+    @constexpr@ reference operator[](size_t pos);       // for b[i];
+
+    @constexpr@ unsigned long to_ulong() const;
+    @constexpr@ unsigned long long to_ullong() const;
+    template<class charT = char,
+              class traits = char_traits<charT>,
+              class Allocator = allocator<charT>>
+      basic_string<charT, traits, Allocator>
+        to_string(charT zero = charT('0'), charT one = charT('1')) const;
+
+    @constexpr@ size_t count() const noexcept;
+    @constexpr@ constexpr size_t size() const noexcept;
+    @constexpr@ bool operator==(const bitset<N>& rhs) const noexcept;
+    @constexpr@ bool operator!=(const bitset<N>& rhs) const noexcept;
+    @constexpr@ bool test(size_t pos) const;
+    @constexpr@ bool all() const noexcept;
+    @constexpr@ bool any() const noexcept;
+    @constexpr@ bool none() const noexcept;
+    @constexpr@ bitset<N> operator<<(size_t pos) const noexcept;
+    @constexpr@ bitset<N> operator>>(size_t pos) const noexcept;
+  };
+
+  // 19.9.3, hash support
+  template<class T> struct hash;
+  template<size_t N> struct hash<bitset<N>>;
+}
+\end{lstlisting}
+
+\chapter{Discussion}
+It would be possible to add a \texttt{constexpr basic\_string\_view} constructor to \texttt{bitset}, but this would introduce ambiguity between the new overload and the one accepting a \texttt{basic\_string} for string literals. This can be solved by adding a third overload accepting a string literal, but that one needs to be constrained properly. Even though that is possible, it would be better to wait for the proposal of a \texttt{Character} concept through SG16. Therefore \texttt{bitset(basic\_string\_view)} is not proposed for now.
+
+\chapter{Implementation}
+There is a fork of libc++ TODO: here.
+
+\end{document}
