@@ -45,8 +45,8 @@
 \begin{document}
 \maketitle
 \hfill \begin{tabular}[t]{ll}
-Document Number:& dXXXXr0  \\
-Date:& \today  \\
+Document Number:& P1251r0  \\
+Date:& 2018-10-04  \\
 Audience: & LEWG\\
 Reply to: & Morris Hafner  \\
           & hafnermorris@gmail.com  \\
@@ -56,8 +56,10 @@ Reply to: & Morris Hafner  \\
 
 As of N4762 only the default constructor, the constructor accepting an \texttt{unsigned long long} and \texttt{operator[]} of \texttt{bitset} are marked as constexpr. With the exception of the functions accepting or returning a \texttt{basic\_string}, there is no reason the rest of the class cannot be made \texttt{constexpr}.
 
+The lack of \texttt{constexpr} for most member functions was probably due to the non-trivial destructor of \texttt{bitset::reference}. However, in libc++ it is trivially destructible already. In libstdc++ it is an empty destructor. This behavior should be standardized.
+
 \chapter{Proposed Changes}
-Mark every member function except for the \texttt{basic\_string} constructor and \texttt{to\_string} as \texttt{constexpr}. Make \texttt{bitset::reference} trivially destructible\footnote{In libc++ \texttt{bitset::reference} is trivially destructible already. In libstdc++ it has an empty destructor.} and \texttt{constexpr}.
+Mark every member function except for the \texttt{basic\_string} constructor and \texttt{to\_string} as \texttt{constexpr}. Make \texttt{bitset::reference} trivially destructible and \texttt{constexpr}. Add a constructor accepting a \texttt{basic\_string\_view}.
 
 \chapter{Impact on the Standard}
 This proposal is a pure library addition and does not require new language features.
@@ -120,8 +122,16 @@ namespace std {
           = basic_string<charT, traits, Allocator>::npos,
         charT zero = charT('0'),
         charT one = charT('1'));
+    @template<class charT, class traits>@
+    @  constexpr explicit bitset(@
+    @    const basic_string_view<charT, traits>& str,@
+    @    typename basic_string_view<charT, traits>::size_type pos = 0,@
+    @    typename basic_string_view<charT, traits>::size_type n@
+    @      = basic_string_view<charT, traits>::npos,@
+    @    charT zero = charT('0'),@
+    @    charT one = charT('1'));@
     template<class charT>
-      explicit bitset(
+      @constexpr@ explicit bitset(
         const charT* str,
         typename basic_string<charT>::size_type n = basic_string<charT>::npos,
         charT zero = charT('0'),
@@ -170,11 +180,5 @@ namespace std {
   template<size_t N> struct hash<bitset<N>>;
 }
 \end{lstlisting}
-
-\chapter{Discussion}
-It would be possible to add a \texttt{constexpr basic\_string\_view} constructor to \texttt{bitset}, but this would introduce ambiguity between the new overload and the one accepting a \texttt{basic\_string} for string literals. This can be solved by adding a third overload accepting a string literal, but that one needs to be constrained properly. Even though that is possible, it would be better to wait for the proposal of a \texttt{Character} concept through SG16. Therefore \texttt{bitset(basic\_string\_view)} is not proposed for now.
-
-\chapter{Implementation}
-There is a fork of libc++ TODO: here.
 
 \end{document}
